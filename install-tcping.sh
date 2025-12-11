@@ -1,36 +1,51 @@
 #!/usr/bin/env bash
-
 set -e
 
-# ===== System check =====
-if [ -f /etc/debian_version ]; then
-    SYS="debian"
-elif [ -f /etc/redhat-release ]; then
-    SYS="redhat"
-elif [ -f /etc/alpine-release ]; then
-    SYS="alpine"
+echo "[install-tcping] Detecting package manager..."
+
+# ===== Detect package manager =====
+PM=""
+if command -v apt >/dev/null 2>&1; then
+    PM="apt"
+elif command -v dnf >/dev/null 2>&1; then
+    PM="dnf"
+elif command -v yum >/dev/null 2>&1; then
+    PM="yum"
+elif command -v apk >/dev/null 2>&1; then
+    PM="apk"
 else
-    echo "Unsupported Linux distribution."
+    echo "Unsupported system: no apt/dnf/yum/apk found."
     exit 1
 fi
 
-# ===== Dependency check =====
-deps=("bash" "nc" "ping" "awk" "date")
-missing=()
+echo "[install-tcping] Package manager detected: $PM"
 
-for d in "${deps[@]}"; do
-    if ! command -v $d >/dev/null 2>&1; then
-        missing+=("$d")
+# ===== Check required runtime tools =====
+required_tools=(bash date awk timeout)
+missing_tools=()
+for t in "${required_tools[@]}"; do
+    if ! command -v "$t" >/dev/null 2>&1; then
+        missing_tools+=("$t")
     fi
 done
 
-if [ ${#missing[@]} -gt 0 ]; then
-    echo "tcping depends on: ${missing[*]}"
-    echo "Please install missing dependencies first."
+if [ ${#missing_tools[@]} -gt 0 ]; then
+    echo "Missing required tools: ${missing_tools[*]}"
+    echo "tcping depends on: ${missing_tools[*]}"
+    echo "Please install them first."
+    case "$PM" in
+        apt) echo "apt install -y ${missing_tools[*]}" ;;
+        dnf|yum) echo "$PM install -y ${missing_tools[*]}" ;;
+        apk) echo "apk add --no-cache ${missing_tools[*]}" ;;
+    esac
     exit 1
 fi
 
+echo "[install-tcping] Dependencies OK"
+
 # ===== Install tcping =====
+echo "[install-tcping] Installing /usr/bin/tcping ..."
+
 cat > /usr/bin/tcping << 'EOF'
 #!/usr/bin/env bash
 
@@ -93,8 +108,6 @@ MAX_TIME=0
 tcp_probe() {
     START=$(date +%s%3N)
 
-    # nc -z: just check port
-    # timeout 2s to avoid long wait
     if timeout 2 bash -c "echo > /dev/tcp/$IP/$PORT" 2>/dev/null; then
         END=$(date +%s%3N)
         RTT=$((END - START))
@@ -105,7 +118,6 @@ tcp_probe() {
         SUCCESS=$((SUCCESS + 1))
         TOTAL_TIME=$((TOTAL_TIME + RTT))
 
-        # update min/max
         if [ $MIN_TIME -eq 0 ] || [ $RTT -lt $MIN_TIME ]; then MIN_TIME=$RTT; fi
         if [ $RTT -gt $MAX_TIME ]; then MAX_TIME=$RTT; fi
     else
@@ -144,5 +156,5 @@ EOF
 
 chmod +x /usr/bin/tcping
 
-echo "tcping installed successfully."
-echo "Usage: tcping [-4 | -6] [-t] <host> <port>"
+echo "[install-tcping] Done!"
+echo "Use: tcping [-4 | -6] [-t] <host> <port>"
