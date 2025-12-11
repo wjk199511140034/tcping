@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
+
 set -e
+
+echo "[install-tcping] Detecting package manager ..."
 
 # ===== Detect package manager =====
 PM=""
@@ -42,125 +45,118 @@ fi
 echo "[install-tcping] Dependencies OK"
 echo "[install-tcping] Installing /usr/bin/tcping ..."
 
-# ===== Install tcping =====
-cat > /usr/bin/tcping << 'EOF'
+# ===== Install tcping script =====
+cat << 'EOF' > /usr/bin/tcping
 #!/usr/bin/env bash
 
-# Default values
-FORCE_IP=""
-COUNT_LIMIT=0
-CURRENT_COUNT=0
+force4=0
+force6=0
+count=0
+host=""
+port=""
 
-usage() {
-    echo "Usage: tcping [-4 | -6] [-c count] <host> <port>"
-    echo "Options:"
-    echo "  -4        Force IPv4"
-    echo "  -6        Force IPv6"
-    echo "  -c times  Run tcping N times, then exit"
-    echo "  -h        Show this help"
-    exit 0
+show_help() {
+    echo "Usage: tcping [-4] [-6] [-c count] <host> <port>"
 }
 
-error_usage() {
-    echo "error: wrong argument"
-    usage
-}
-
-while getopts ":46hc:" opt; do
-    case $opt in
-        4) FORCE_IP="-4" ;;
-        6) FORCE_IP="-6" ;;
-        c) COUNT_LIMIT="$OPTARG" ;;
-        h) usage ;;
-        *) error_usage ;;
+# ===== Parse args =====
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -4) force4=1; shift ;;
+        -6) force6=1; shift ;;
+        -c)
+            if [[ -z "$2" ]] || ! [[ "$2" =~ ^[0-9]+$ ]]; then
+                echo "error: wrong argument"
+                show_help
+                exit 1
+            fi
+            count="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -*)
+            echo "error: wrong argument"
+            show_help
+            exit 1
+            ;;
+        *)
+            if [[ -z "$host" ]]; then
+                host="$1"
+            elif [[ -z "$port" ]]; then
+                port="$1"
+            else
+                echo "error: wrong argument"
+                show_help
+                exit 1
+            fi
+            shift
+            ;;
     esac
 done
 
-shift $((OPTIND - 1))
-
-HOST="$1"
-PORT="$2"
-
-if [ -z "$HOST" ] || [ -z "$PORT" ]; then
-    error_usage
-fi
-
-# Validate count argument
-if ! [[ "$COUNT_LIMIT" =~ ^[0-9]+$ ]]; then
-    if [ "$COUNT_LIMIT" != "0" ]; then
-        error_usage
-    fi
-fi
-
-# Resolve IP
-if [ "$FORCE_IP" = "-4" ]; then
-    IP=$(getent ahostsv4 "$HOST" | awk '{print $1; exit}')
-elif [ "$FORCE_IP" = "-6" ]; then
-    IP=$(getent ahostsv6 "$HOST" | awk '{print $1; exit}')
-else
-    IP=$(getent ahosts "$HOST" | awk '{print $1; exit}')
-fi
-
-if [ -z "$IP" ]; then
-    echo "Unknown host: $HOST"
+if [[ -z "$host" || -z "$port" ]]; then
+    echo "error: wrong argument"
+    show_help
     exit 1
 fi
 
-echo "TCP Ping $HOST ($IP) port $PORT"
+# ===== Prepare exec =====
+ip_flag=""
+[[ $force4 -eq 1 ]] && ip_flag="-4"
+[[ $force6 -eq 1 ]] && ip_flag="-6"
 
-COUNT=0
-SUCCESS=0
-FAILED=0
-TOTAL_TIME=0
-MIN_TIME=0
-MAX_TIME=0
+sent=0
+success=0
+fail=0
+sum=0
+min=999999
+max=0
 
-tcp_probe() {
-    START=$(date +%s%3N)
-
-    if timeout 2 bash -c "echo > /dev/tcp/$IP/$PORT" 2>/dev/null; then
-        END=$(date +%s%3N)
-        RTT=$((END - START))
-
-        echo "Reply from $IP:$PORT time=${RTT}ms"
-
-        COUNT=$((COUNT + 1))
-        SUCCESS=$((SUCCESS + 1))
-        TOTAL_TIME=$((TOTAL_TIME + RTT))
-
-        if [ $MIN_TIME -eq 0 ] || [ $RTT -lt $MIN_TIME ]; then MIN_TIME=$RTT; fi
-        if [ $RTT -gt $MAX_TIME ]; then MAX_TIME=$RTT; fi
-    else
-        echo "No response from $IP:$PORT"
-        COUNT=$((COUNT + 1))
-        FAILED=$((FAILED + 1))
-    fi
-}
-
-trap ctrl_c INT
-
-ctrl_c() {
+print_stats() {
     echo ""
-    echo "Ping statistics for $IP:$PORT"
-    echo "     $COUNT probes sent."
-    echo "     $SUCCESS successful, $FAILED failed.  ($(awk "BEGIN {printf \"%.2f\", ($FAILED/$COUNT)*100}")% fail)"
-
-    if [ $SUCCESS -gt 0 ]; then
-        AVG=$(awk "BEGIN {printf \"%.3f\", $TOTAL_TIME/$SUCCESS}")
-        echo "Approximate trip times in milli-seconds:"
-        echo "     Minimum = ${MIN_TIME}ms, Maximum = ${MAX_TIME}ms, Average = ${AVG}ms"
+    echo "Ping statistics for $host:$port"
+    echo "     $sent probes sent."
+    echo "     $success successful, $fail failed.  ($(awk "BEGIN{printf \"%.2f\", ($fail/$sent)*100}")% fail)"
+    echo "Approximate trip times in milli-seconds:"
+    if [[ $success -gt 0 ]]; then
+        avg=$(awk "BEGIN {printf \"%.3f\", $sum/$success}")
+        echo "     Minimum = ${min}ms, Maximum = ${max}ms, Average = ${avg}ms"
+    else
+        echo "     No successful probes."
     fi
-
-    exit 0
 }
 
-# ===== Main loop =====
-while true; do
-    tcp_probe
+trap print_stats INT
 
-    CURRENT_COUNT=$((CURRENT_COUNT + 1))
-    if [ "$COUNT_LIMIT" -gt 0 ] && [ "$CURRENT_COUNT" -ge "$COUNT_LIMIT" ]; then
-        ctrl_c
+probe_once() {
+    local start end diff
+    start=$(date +%s%N)
+    if timeout 2 bash -c "</dev/tcp/$host/$port" 2>/dev/null; then
+        end=$(date +%s%N)
+        diff=$(( (end-start)/1000000 ))
+        echo "Connected to $host:$port, seq=$sent time=${diff}ms"
+
+        ((success++))
+        sum=$((sum+diff))
+        [[ $diff -lt $min ]] && min=$diff
+        [[ $diff -gt $max ]] && max=$diff
+    else
+        echo "Connection to $host:$port failed, seq=$sent"
+        ((fail++))
+    fi
+}
+
+# ===== Loop =====
+while true; do
+    ((sent++))
+    probe_once
+
+    if [[ $count -gt 0 && $sent -ge $count ]]; then
+        print_stats
+        exit 0
     fi
 
     sleep 1
@@ -168,6 +164,4 @@ done
 EOF
 
 chmod +x /usr/bin/tcping
-
 echo "[install-tcping] Done!"
-echo "Use: tcping [-4 | -6]()
