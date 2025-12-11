@@ -22,7 +22,7 @@ echo "[install-tcping] Package manager detected: $PM"
 # ================================
 # Check required runtime tools
 # ================================
-required_tools=(bash date awk timeout )
+required_tools=(bash date awk timeout)
 missing_tools=()
 for t in "${required_tools[@]}"; do
     if ! command -v "$t" >/dev/null 2>&1; then
@@ -31,11 +31,11 @@ for t in "${required_tools[@]}"; do
 done
 
 if [ ${#missing_tools[@]} -gt 0 ]; then
-    echo "Missing required tools: ${missing_tools[*]}"
+    echo "Missing dependency: ${missing_tools[*]}"
     case "$PM" in
-        apt) echo "apt install -y ${missing_tools[*]}" ;;
-        dnf|yum) echo "$PM install -y ${missing_tools[*]}" ;;
-        apk) echo "apk add --no-cache ${missing_tools[*]}" ;;
+        apt) echo "pleasse install it frist" ;;
+        dnf|yum) echo "please install it first" ;;
+        apk) echo "please install it first" ;;
     esac
     exit 1
 fi
@@ -112,13 +112,6 @@ if [ -z "$host" ] || [ -z "$port" ]; then
 fi
 
 # ===== Resolve IP =====
-family_flag=""
-if [ $use_ipv4 -eq 1 ]; then
-    family_flag="-4"
-elif [ $use_ipv6 -eq 1 ]; then
-    family_flag="-6"
-fi
-
 ip=$(getent ahosts "$host" | awk '/STREAM/ {print $1; exit}')
 [ -z "$ip" ] && ip="$host"
 
