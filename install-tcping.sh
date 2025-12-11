@@ -160,6 +160,8 @@ while true; do
         ((fail++))
         ((sent++))
     fi
+    sleep 1
+
 
     # stop if count reached
     if [ $count -gt 0 ] && [ $sent -ge $count ]; then
