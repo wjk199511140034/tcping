@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -e
 
-echo "[install-tcping] Detecting package manager..."
-
 # ===== Detect package manager =====
 PM=""
 if command -v apt >/dev/null 2>&1; then
@@ -42,34 +40,39 @@ if [ ${#missing_tools[@]} -gt 0 ]; then
 fi
 
 echo "[install-tcping] Dependencies OK"
-
-# ===== Install tcping =====
 echo "[install-tcping] Installing /usr/bin/tcping ..."
 
+# ===== Install tcping =====
 cat > /usr/bin/tcping << 'EOF'
 #!/usr/bin/env bash
 
 # Default values
 FORCE_IP=""
-REPEAT=0
+COUNT_LIMIT=0
+CURRENT_COUNT=0
 
 usage() {
-    echo "Usage: tcping [-4 | -6] [-t] <host> <port>"
+    echo "Usage: tcping [-4 | -6] [-c count] <host> <port>"
     echo "Options:"
     echo "  -4        Force IPv4"
     echo "  -6        Force IPv6"
-    echo "  -t        Loop until Ctrl+C"
+    echo "  -c times  Run tcping N times, then exit"
     echo "  -h        Show this help"
     exit 0
 }
 
-while getopts ":46th" opt; do
+error_usage() {
+    echo "error: wrong argument"
+    usage
+}
+
+while getopts ":46hc:" opt; do
     case $opt in
         4) FORCE_IP="-4" ;;
         6) FORCE_IP="-6" ;;
-        t) REPEAT=1 ;;
+        c) COUNT_LIMIT="$OPTARG" ;;
         h) usage ;;
-        *) usage ;;
+        *) error_usage ;;
     esac
 done
 
@@ -79,7 +82,14 @@ HOST="$1"
 PORT="$2"
 
 if [ -z "$HOST" ] || [ -z "$PORT" ]; then
-    usage
+    error_usage
+fi
+
+# Validate count argument
+if ! [[ "$COUNT_LIMIT" =~ ^[0-9]+$ ]]; then
+    if [ "$COUNT_LIMIT" != "0" ]; then
+        error_usage
+    fi
 fi
 
 # Resolve IP
@@ -140,21 +150,24 @@ ctrl_c() {
         echo "Approximate trip times in milli-seconds:"
         echo "     Minimum = ${MIN_TIME}ms, Maximum = ${MAX_TIME}ms, Average = ${AVG}ms"
     fi
+
     exit 0
 }
 
-# Main loop
-if [ $REPEAT -eq 1 ]; then
-    while true; do
-        tcp_probe
-        sleep 1
-    done
-else
+# ===== Main loop =====
+while true; do
     tcp_probe
-fi
+
+    CURRENT_COUNT=$((CURRENT_COUNT + 1))
+    if [ "$COUNT_LIMIT" -gt 0 ] && [ "$CURRENT_COUNT" -ge "$COUNT_LIMIT" ]; then
+        ctrl_c
+    fi
+
+    sleep 1
+done
 EOF
 
 chmod +x /usr/bin/tcping
 
 echo "[install-tcping] Done!"
-echo "Use: tcping [-4 | -6] [-t] <host> <port>"
+echo "Use: tcping [-4 | -6]()
