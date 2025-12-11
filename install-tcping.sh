@@ -112,7 +112,7 @@ if [ -z "$host" ] || [ -z "$port" ]; then
 fi
 
 # ===== Resolve IP =====
-ip=$(getent ahosts "$host" | awk '/STREAM/ {print $1; exit}')
+ip=$(getent ahosts "$host" | awk -v v6=$use_ipv6 -v v4=$use_ipv4 '/STREAM/ {if(v6==1 && $1~/\:/){print $1; exit} if(v4==1 && $1!~/\:/){print $1; exit} if(v6==0 && v4==0){print $1; exit}}')
 [ -z "$ip" ] && ip="$host"
 
 echo "TCP Ping $host ($ip) port $port"
