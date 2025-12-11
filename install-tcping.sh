@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# ===== Detect package manager =====
+
+# ================================
+# Detect package manager
+# ================================
 PM=""
 if command -v apt >/dev/null 2>&1; then
     PM="apt"
@@ -14,8 +17,12 @@ else
     exit 1
 fi
 
-# ===== Check runtime deps =====
-required_tools=(bash date awk timeout)
+echo "[install-tcping] Package manager detected: $PM"
+
+# ================================
+# Check required runtime tools
+# ================================
+required_tools=(bash date awk timeout nc)
 missing_tools=()
 for t in "${required_tools[@]}"; do
     if ! command -v "$t" >/dev/null 2>&1; then
@@ -33,35 +40,46 @@ if [ ${#missing_tools[@]} -gt 0 ]; then
     exit 1
 fi
 
+echo "[install-tcping] Dependencies OK"
+
+# ================================
+# Install tcping script
+# ================================
+install_path="/usr/bin/tcping"
+echo "[install-tcping] Installing $install_path ..."
+
+cat > "$install_path" <<'EOF'
+#!/usr/bin/env bash
+
 # ===== Usage =====
 usage() {
-cat <<EOF
+cat <<USAGE
 Usage: tcping [-4|-6] [-c times] host port
 Options:
   -4        Use IPv4
   -6        Use IPv6
   -c N      Send N probes then stop
   -h        Show help
-EOF
+USAGE
 }
 
-# ===== Parse args =====
-force_v4=0
-force_v6=0
-count_limit=0
+# ===== Argument parse =====
+use_ipv4=0
+use_ipv6=0
+count=0
 
-while [ $# -gt 0 ]; do
+while [[ $# -gt 0 ]]; do
     case "$1" in
-        -4) force_v4=1 ;;
-        -6) force_v6=1 ;;
+        -4) use_ipv4=1 ;;
+        -6) use_ipv6=1 ;;
         -c)
             shift
-            if ! echo "$1" | grep -qE '^[0-9]+$'; then
-                echo "error: wrong argument"
+            [[ "$1" =~ ^[0-9]+$ ]] || {
+                echo "error: -c needs a number"
                 usage
                 exit 1
-            fi
-            count_limit="$1"
+            }
+            count="$1"
             ;;
         -h)
             usage
@@ -73,12 +91,12 @@ while [ $# -gt 0 ]; do
             exit 1
             ;;
         *)
-            if [ -z "${host:-}" ]; then
+            if [ -z "$host" ]; then
                 host="$1"
-            elif [ -z "${port:-}" ]; then
+            elif [ -z "$port" ]; then
                 port="$1"
             else
-                echo "error: wrong argument"
+                echo "error: too many arguments"
                 usage
                 exit 1
             fi
@@ -87,60 +105,76 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-if [ -z "${host:-}" ] || [ -z "${port:-}" ]; then
-    echo "error: wrong argument"
+if [ -z "$host" ] || [ -z "$port" ]; then
+    echo "error: missing host or port"
     usage
     exit 1
 fi
 
-# ===== Select ping command =====
-ping_cmd="ping"
-if [ "$force_v4" -eq 1 ]; then ping_cmd="ping -4"; fi
-if [ "$force_v6" -eq 1 ]; then ping_cmd="ping -6"; fi
+# ===== Resolve IP =====
+family_flag=""
+if [ $use_ipv4 -eq 1 ]; then
+    family_flag="-4"
+elif [ $use_ipv6 -eq 1 ]; then
+    family_flag="-6"
+fi
 
-# ===== Stats =====
+ip=$(getent ahosts "$host" | awk '/STREAM/ {print $1; exit}')
+[ -z "$ip" ] && ip="$host"
+
+echo "TCP Ping $host ($ip) port $port"
+
+# ===== Statistics =====
 sent=0
-success=0
-min=999999
-max=0
-total=0
+ok=0
+fail=0
+min_time=999999
+max_time=0
+sum_time=0
 
-cleanup() {
+# ===== Ctrl+C handler =====
+finish() {
     echo ""
-    echo "Ping statistics for $host:$port"
+    echo "tcping statistics for $ip:$port"
     echo "     $sent probes sent."
-    echo "     $success successful, $((sent-success)) failed.  ($(awk "BEGIN{printf \"%.2f\", ($sent-$success)/$sent*100}")% fail)"
-    if [ "$success" -gt 0 ]; then
-        avg=$(awk "BEGIN{printf \"%.3f\", $total/$success}")
+    echo "     $ok successful, $fail failed.  ($(awk "BEGIN{printf \"%.2f\", $fail*100/$sent}")% fail)"
+    if [ $ok -gt 0 ]; then
+        avg=$(awk "BEGIN{printf \"%.3f\", $sum_time/$ok}")
         echo "Approximate trip times in milli-seconds:"
-        echo "     Minimum = ${min}ms, Maximum = ${max}ms, Average = ${avg}ms"
+        echo "     Minimum = ${min_time}ms, Maximum = ${max_time}ms, Average = ${avg}ms"
     fi
     exit 0
 }
-trap cleanup INT
 
-# ===== Loop =====
-seq=0
+trap finish INT
+
+# ===== Main loop =====
 while true; do
-    seq=$((seq+1))
-    sent=$((sent+1))
-
     start=$(date +%s%3N)
-    if timeout 2 bash -c "</dev/tcp/$host/$port" 2>/dev/null; then
+
+    if timeout 2 bash -c "</dev/tcp/$ip/$port" 2>/dev/null; then
         end=$(date +%s%3N)
-        time_ms=$((end-start))
-        echo "Connected to $host:$port, seq=$seq time=${time_ms}ms"
+        cost=$((end - start))
+        echo "Reply from $ip:$port time=${cost}ms"
 
-        success=$((success+1))
-        total=$((total+time_ms))
-        [ "$time_ms" -lt "$min" ] && min=$time_ms
-        [ "$time_ms" -gt "$max" ] && max=$time_ms
+        ((ok++))
+        ((sent++))
+        sum_time=$((sum_time+cost))
+        (( cost < min_time )) && min_time=$cost
+        (( cost > max_time )) && max_time=$cost
     else
-        echo "Failed to connect $host:$port, seq=$seq"
+        echo "No response from $ip:$port"
+        ((fail++))
+        ((sent++))
     fi
 
-    if [ "$count_limit" -gt 0 ] && [ "$seq" -ge "$count_limit" ]; then
-        cleanup
+    # stop if count reached
+    if [ $count -gt 0 ] && [ $sent -ge $count ]; then
+        finish
     fi
-    sleep 1
 done
+EOF
+
+chmod +x "$install_path"
+
+echo "[install-tcping] Done!"
