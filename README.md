@@ -1,11 +1,11 @@
 ## tcping for Debian / Ubuntu / CentOS / Alma / Rocky / RHEL / Alpine<br>
 Usege:<br>
 ```
-wget -O - https://raw.githubusercontent.com/wjk199511140034/tcping/tree/main/install-tcping.sh | bash
+wget -O - https://raw.githubusercontent.com/wjk199511140034/tcping/main/install-tcping.sh | bash
 ```
 Or:<br>
 ```
-curl -sSL https://raw.githubusercontent.com/wjk199511140034/tcping/tree/main/install-tcping.sh | bash
+curl -sSL https://raw.githubusercontent.com/wjk199511140034/tcping/main/install-tcping.sh | bash
 ```
 <br>
 Should prompt out likethis:<br>
