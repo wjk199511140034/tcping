@@ -126,8 +126,7 @@ if [ $use_ipv4 -eq 1 ] && [[ "$ip" == *:* ]]; then
     exit 1
 fi
 
-echo "TCP Ping $host ($ip) port $port"
-
+[ "$ip" = "$host" ] && echo "TCP Ping $host port $port" || echo "TCP Ping $host ($ip) port $port"
 
 # ===== Statistics =====
 sent=0
@@ -140,7 +139,7 @@ sum_time=0
 # ===== Ctrl+C handler =====
 finish() {
     echo ""
-    echo "tcping statistics for $ip:$port"
+    echo "Tcping statistics for $ip:$port"
     echo "     $sent probes sent."
     echo "     $ok successful, $fail failed.  ($(awk "BEGIN{printf \"%.2f\", $fail*100/$sent}")% fail)"
     if [ $ok -gt 0 ]; then
