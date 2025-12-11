@@ -113,17 +113,11 @@ fi
 
 # ===== Resolve IP =====
 ip=$(getent ahosts "$host" | awk -v v6=$use_ipv6 -v v4=$use_ipv4 '/STREAM/ {if(v6==1 && $1~/\:/){print $1; exit} if(v4==1 && $1!~/\:/){print $1; exit} if(v6==0 && v4==0){print $1; exit}}')
-[ -z "$ip" ] && ip="$host"
-
-if [ "$use_ipv4" -eq 1 ] && [[ "$ip" == *:* ]]; then
-    echo "error: $host has no IPv4 address"
+if [ -z "$ip" ]; then
+    echo "Failed to resolve IP for $host with IPv${use_ipv6:+6}${use_ipv4:+4} preference."
     exit 1
 fi
 
-if [ "$use_ipv6" -eq 1 ] && [[ "$ip" != *:* ]]; then
-    echo "error: $host has no IPv6 address"
-    exit 1
-fi
 
 
 # ===== Statistics =====
