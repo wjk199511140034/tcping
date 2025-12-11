@@ -113,20 +113,18 @@ fi
 
 # ===== Resolve IP =====
 ip=$(getent ahosts "$host" | awk -v v6=$use_ipv6 -v v4=$use_ipv4 '/STREAM/ {if(v6==1 && $1~/\:/){print $1; exit} if(v4==1 && $1!~/\:/){print $1; exit} if(v6==0 && v4==0){print $1; exit}}')
+[ -z "$ip" ] && ip="$host"
 
-# no IPv6 when -6
-if [ $use_ipv6 -eq 1 ] && [[ "$ip" != *:* ]]; then
-    echo "error: host has no IPv6 address"
+if [ "$use_ipv4" -eq 1 ] && [[ "$ip" == *:* ]]; then
+    echo "error: $host has no IPv4 address"
     exit 1
 fi
 
-# no IPv4 when -4
-if [ $use_ipv4 -eq 1 ] && [[ "$ip" == *:* ]]; then
-    echo "error: host has no IPv4 address"
+if [ "$use_ipv6" -eq 1 ] && [[ "$ip" != *:* ]]; then
+    echo "error: $host has no IPv6 address"
     exit 1
 fi
 
-[ "$ip" = "$host" ] && echo "TCP Ping $host port $port" || echo "TCP Ping $host ($ip) port $port"
 
 # ===== Statistics =====
 sent=0
