@@ -131,7 +131,13 @@ sum_time=0
 # ===== Ctrl+C handler =====
 finish() {
     echo ""
-    echo "Tcping statistics for $ip:$port"
+    if [[ "$ip" == *:* ]]; then
+    showip="[$ip]"
+    else
+    showip="$ip"
+    fi
+    echo "Tcping statistics for $showip:$port"
+
     echo "     $sent probes sent."
     echo "     $ok successful, $fail failed.  ($(awk "BEGIN{printf \"%.2f\", $fail*100/$sent}")% fail)"
     if [ $ok -gt 0 ]; then
@@ -151,15 +157,26 @@ while true; do
     if timeout 2 bash -c "</dev/tcp/$ip/$port" 2>/dev/null; then
         end=$(date +%s%3N)
         cost=$((end - start))
-        echo "Reply from $ip:$port time=${cost}ms"
-
+        # 如果是 IPv6，加中括号
+        if [[ "$ip" == *:* ]]; then
+            showip="[$ip]"
+        else
+            showip="$ip"
+        fi
+            echo "Reply from $showip:$port time=${cost}ms"
         ((ok++))
         ((sent++))
         sum_time=$((sum_time+cost))
         (( cost < min_time )) && min_time=$cost
         (( cost > max_time )) && max_time=$cost
     else
-        echo "No response from $ip:$port"
+        if [[ "$ip" == *:* ]]; then
+        showip="[$ip]"
+        else
+        showip="$ip"
+        fi
+        echo "No response from $showip:$port"
+
         ((fail++))
         ((sent++))
     fi
