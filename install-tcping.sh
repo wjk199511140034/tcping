@@ -22,7 +22,7 @@ echo "[install-tcping] Package manager detected: $PM"
 # ==========================================
 # Check runtime deps
 # ==========================================
-required_tools=(bash date awk timeout)
+required_tools=(bash date awk timeout getent)
 missing_tools=()
 for t in "${required_tools[@]}"; do
     if ! command -v "$t" >/dev/null 2>&1; then
