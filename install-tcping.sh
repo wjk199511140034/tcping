@@ -109,6 +109,11 @@ error_invalid() {
     exit 1
 }
 
+error_invalid_port() {
+    echo "Error: Port must be a number."
+    usage
+    exit 1
+}
 
 
 # Parse Arguments
@@ -192,7 +197,7 @@ elif [ "$#" -eq 2 ]; then
     PORT=$2
     # Port must be pure number and within 65535
     if [[ ! "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
-        error_invalid
+        error_invalid_port
     fi
 fi
 
