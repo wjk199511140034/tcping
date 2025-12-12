@@ -4,14 +4,14 @@
 # Install Script Header (System Detection)
 # ==========================================
 PM=""
-if command -v apt >/dev/null 2>&1; then
-    PM="apt"
+if command -v apk >/dev/null 2>&1; then
+    PM="apk"
 elif command -v dnf >/dev/null 2>&1; then
     PM="dnf"
 elif command -v yum >/dev/null 2>&1; then
     PM="yum"
-elif command -v apk >/dev/null 2>&1; then
-    PM="apk"
+elif command -v apt >/dev/null 2>&1; then
+    PM="apt"
 else
     echo "Unsupported system: no apt/dnf/yum/apk found."
     exit 1
@@ -56,9 +56,6 @@ FORCE_IPV6=0
 COUNT=-1
 HOST=""
 PORT=""
-
-# Regex helpers
-IPV4_REGEX='^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$'
 
 # Error Handling / Usage
 usage() {
@@ -158,36 +155,26 @@ if [[ "$HOST" =~ [^A-Za-z0-9.:-] ]]; then
     error_invalid
 fi
 
-IP_VERSION=-1 
-# 0.Domian 4.IPv4 6.IPv6  
+IS_IP=-1 
 
 # 2. Check input format
 if [[ "$HOST" == *"."* ]]; then
 	if [[ "$HOST" == *[a-zA-Z]* ]]; then
-		IP_VERSION=0
+		IS_IP=0
 	else
-		IP_VERSION=4
+		IS_IP=1
 	fi
 elif [[ "$HOST" = "localhost" ]]; then
-    IP_VERSION=0
+    IS_IP=0
 elif [[ "$HOST" == *":"* ]]; then
-    IP_VERSION=6
+    IS_IP=1
 else
     error_invalid
 fi
 
-# 3. Port Assignment Logic 
-if [ "$#" -eq 1 ]; then
-    # Missing Port Logic: Default Port Assignment
-    if [ "$IP_VERSION" -eq 4 ] || [ "$IP_VERSION" -eq 6 ]; then
-        PORT=22
-        echo "Warning: Missing port. Using default port 22 for IP address."
-    else
-        PORT=443
-        echo "Warning: Missing port. Using default port 443 for domain name."
-    fi
-    
-elif [ "$#" -eq 2 ]; then 
+# 3. Check input port
+
+if [ "$#" -eq 2 ]; then 
     # Port is provided, perform validation
     PORT=$2
     # Port must be pure number and within 65535
@@ -201,44 +188,35 @@ fi
 # ============================
 RESOLVED_IP=""
 
-# 1. Host is a strict IPv4 address (from step 2)
-if [ "$IP_VERSION" -eq 4 ]; then
-    if [ "$FORCE_IPV6" -eq 1 ]; then
-        echo "Error: Host is IPv4, but -6 flag specified."
-        exit 1
-    fi
-    RESOLVED_IP="$HOST"
-
+# 1. Fetch real IP form getent.
+RESOLVE_CMD="getent ahosts $HOST"
+    
+if [ "$FORCE_IPV4" -eq 1 ]; then
+    RESOLVED_IP=$($RESOLVE_CMD | awk '{ if ($1 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) { print $1; exit } }')
+elif [ "$FORCE_IPV6" -eq 1 ]; then
+    RESOLVED_IP=$($RESOLVE_CMD | awk '{ if ($1 ~ /:/) { print $1; exit } }')
 else
-    # 2. Host is IPv6, Domain, or Hostname. Use getent to resolve/validate.
-    RESOLVE_CMD="getent ahosts $HOST"
-    
-    if [ "$FORCE_IPV4" -eq 1 ]; then
-        RESOLVED_IP=$($RESOLVE_CMD | awk '{ if ($1 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) { print $1; exit } }')
-    elif [ "$FORCE_IPV6" -eq 1 ]; then
-        RESOLVED_IP=$($RESOLVE_CMD | awk '{ if ($1 ~ /:/) { print $1; exit } }')
+    RESOLVED_IP=$($RESOLVE_CMD | awk '{ print $1; exit }')
+fi
+
+# 2. Check for resolution failure 
+if [ -z "$RESOLVED_IP" ]; then
+    echo "Error: Failed to resolve address for $HOST"
+    exit 1
+fi
+
+# 3. Assignment a default port if it missing
+if [ "$#" -eq 1 ]; then
+	if [ "$IS_IP" -ne 0 ] ; then
+        PORT=22
+        echo "Warning: Missing port. Using default port 22 for IP address."
     else
-        RESOLVED_IP=$($RESOLVE_CMD | awk '{ print $1; exit }')
-    fi
-    
-    # Check for resolution failure 
-    if [ -z "$RESOLVED_IP" ]; then
-        echo "Error: Failed to resolve address for $HOST. Check format or DNS."
-        exit 1
-    fi
-    
-    # 3. Ensure correct protocol is used
-    if [ "$FORCE_IPV4" -eq 1 ] && [[ "$RESOLVED_IP" == *":"* ]]; then
-        echo "Error: Resolved IPv6 address ($RESOLVED_IP), but -4 flag specified."
-        exit 1
-    fi
-    if [ "$FORCE_IPV6" -eq 1 ] && [[ "$RESOLVED_IP" =~ $IPV4_REGEX ]]; then
-        echo "Error: Resolved IPv4 address ($RESOLVED_IP), but -6 flag specified."
-        exit 1
+        PORT=443
+        echo "Warning: Missing port. Using default port 443 for domain name."
     fi
 fi
 
-# Determine display format for IP (add brackets for IPv6)
+# 4. Determine display format for IP (add brackets for IPv6)
 DISPLAY_IP="$RESOLVED_IP"
 if [[ "$RESOLVED_IP" == *":"* ]]; then
     DISPLAY_IP="[$RESOLVED_IP]"
@@ -284,8 +262,11 @@ trap print_stats EXIT
 # ============================
 # Logic: Header
 # ============================
-echo "TCP Ping $HOST ($RESOLVED_IP) port $PORT"
-
+if [ "$IS_IP" -eq 0 ] ; then
+	echo "Tcping $HOST ($RESOLVED_IP) port $PORT"
+else
+	echo "Tcping $HOST port $PORT"
+fi
 # ============================
 # Logic: Main Loop
 # ============================
