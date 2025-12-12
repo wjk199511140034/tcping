@@ -1,4 +1,4 @@
-## tcping for Debian / Ubuntu / CentOS / Alma / Rocky / RHEL / Alpine<br>
+## tcping for Debian / Ubuntu / CentOS / Alpine<br>
 Install:<br>
 ```
 wget -O - https://raw.githubusercontent.com/wjk199511140034/tcping/main/install-tcping.sh | bash
