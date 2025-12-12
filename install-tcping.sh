@@ -165,7 +165,7 @@ if [[ "$HOST" == *"."* ]]; then
 		IS_IP=1
 	fi
 elif [[ "$HOST" = "localhost" ]]; then
-    IS_IP=0
+    IS_IP=1
 elif [[ "$HOST" == *":"* ]]; then
     IS_IP=1
 else
