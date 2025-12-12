@@ -73,7 +73,6 @@ END_USAGE
 }
 
 exit_error() {
-    # FIX: 首字母大写
     echo "Error: Wrong argument"
     usage
     exit 1
@@ -142,14 +141,12 @@ RESOLVED_IP=""
 # 1. Check if HOST is already a valid IP address
 if [[ "$HOST" =~ $IPV4_REGEX ]]; then
     if [ "$FORCE_IPV6" -eq 1 ]; then
-        # FIX: 首字母大写
         echo "Error: Host is IPv4, but -6 flag specified."
         exit 1
     fi
     RESOLVED_IP="$HOST"
 elif [[ "$HOST" == *":"* ]]; then # Simple check for IPv6 format
     if [ "$FORCE_IPV4" -eq 1 ]; then
-        # FIX: 首字母大写
         echo "Error: Host is IPv6, but -4 flag specified."
         exit 1
     fi
@@ -162,7 +159,6 @@ else
         # Try to find IPv4
         RESOLVED_IP=$($RESOLVE_CMD | awk '{ if ($1 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) { print $1; exit } }')
         if [ -z "$RESOLVED_IP" ]; then
-            # FIX: 首字母大写
             echo "Error: Failed to resolve IPv4 address for $HOST."
             exit 1
         fi
@@ -170,7 +166,6 @@ else
         # Try to find IPv6
         RESOLVED_IP=$($RESOLVE_CMD | awk '{ if ($1 ~ /:/) { print $1; exit } }')
         if [ -z "$RESOLVED_IP" ]; then
-            # FIX: 首字母大写
             echo "Error: Failed to resolve IPv6 address for $HOST."
             exit 1
         fi
@@ -178,7 +173,6 @@ else
         # No forced version, pick the first one (usually v4)
         RESOLVED_IP=$($RESOLVE_CMD | awk '{ print $1; exit }')
         if [ -z "$RESOLVED_IP" ]; then
-            # FIX: 首字母大写
             echo "Error: Failed to resolve address for $HOST."
             exit 1
         fi
@@ -192,14 +186,12 @@ if [[ "$RESOLVED_IP" == *":"* ]]; then
     DISPLAY_IP="[$RESOLVED_IP]"
     # Additionally, ensure we use the correct protocol for connection if forced
     if [ "$FORCE_IPV4" -eq 1 ]; then
-        # FIX: 首字母大写
         echo "Error: Resolved IPv6 address ($RESOLVED_IP), but -4 flag specified."
         exit 1
     fi
 elif [ "$FORCE_IPV6" -eq 1 ]; then
     # Additionally, ensure we use the correct protocol for connection if forced
     if [[ "$RESOLVED_IP" =~ $IPV4_REGEX ]]; then
-        # FIX: 首字母大写
         echo "Error: Resolved IPv4 address ($RESOLVED_IP), but -6 flag specified."
         exit 1
     fi
