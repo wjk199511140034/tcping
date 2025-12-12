@@ -31,7 +31,7 @@ for t in "${required_tools[@]}"; do
 done
 
 if [ ${#missing_tools[@]} -gt 0 ]; then
-    echo "Missing required tools: ${missing_tools[*]}"
+    echo "Missing required dependencies: ${missing_tools[*]}"
     echo "Please install ${missing_tools[*]} first"
     exit 1
 fi
