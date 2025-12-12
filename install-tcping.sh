@@ -45,7 +45,7 @@ INSTALL_PATH="/usr/bin/tcping"
 
 echo "[install-tcping] Installing $INSTALL_PATH ..."
 
-# We use 'EOF' (quoted) to prevent variable expansion during installation
+# Use 'EOF' (quoted) to prevent variable expansion during installation
 cat << 'EOF' > "$INSTALL_PATH"
 #!/bin/bash
 
@@ -57,8 +57,9 @@ HOST=""
 PORT=""
 
 # Regex helpers
-IPV4_REGEX='^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$'
-# Note: IPV6_REGEX check is simplified by checking for ':' later.
+IPV4_REGEX='^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$'
+IPV6_REGEX='^(([0-9A-Fa-f]{1,4}:){1,7}[0-9A-Fa-f]{1,4}|([0-9A-Fa-f]{1,4})?::([0-9A-Fa-f]{1,4}:){0,5}[0-9A-Fa-f]{1,4})$'
+DOMAIN_REGEX='^([A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$'
 
 # Error Handling / Usage
 usage() {
@@ -72,110 +73,169 @@ Options:
 END_USAGE
 }
 
-exit_error() {
-    echo "Error: Wrong argument"
+error_missing_argument() {
+    echo "Error: Missing required argument."
     usage
     exit 1
 }
+
+error_too_many_arguments() {
+    echo "Error: Too many arguments."
+    usage
+    exit 1
+}
+
+error_invalid_option() {
+    echo "Error: Invalid option."
+    usage
+    exit 1
+}
+
+error_option_requires_value() {
+    echo "Error: Option requires a value."
+    usage
+    exit 1
+}
+
+error_invalid_count() {
+    echo "Error: COUNT must be a number."
+    usage
+    exit 1
+}
+
+error_invalid() {
+    echo "Error: Invalid argument(s)."
+    usage
+    exit 1
+}
+
+
 
 # Parse Arguments
 while getopts ":46c:h" opt; do
   case $opt in
     4) FORCE_IPV4=1 ;;
     6) FORCE_IPV6=1 ;;
-    c) 
-       if [[ ! "$OPTARG" =~ ^[0-9]+$ ]]; then exit_error; fi
-       COUNT="$OPTARG" 
+    c)
+       if [[ ! "$OPTARG" =~ ^[0-9]+$ ]]; then
+           error_invalid_count
+       fi
+       COUNT="$OPTARG"
        ;;
     h) usage; exit 0 ;;
-    \?) exit_error ;; # Invalid option
-    :) exit_error ;;  # Missing argument
+    \?) error_invalid_option ;;      # 非法 option
+    :)  error_option_requires_value ;; # 缺少值
   esac
 done
+
+if [ "$FORCE_IPV4" = "1" ] && [ "$FORCE_IPV6" = "1" ]; then
+    echo "Error: Cannot specify both -4 and -6 at the same time."
+    usage
+    exit 1
+fi
+
+
 shift $((OPTIND-1))
 
+
 # ============================
-# Logic: Check Positional Args
+# Logic: Check Positional Args (Strict Front-end Validation)
 # ============================
-if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
-    exit_error
+if [ "$#" -lt 1 ] ; then
+    error_missing_argument
 fi
+
+if [ "$#" -gt 2 ]; then
+    error_too_many_arguments
+fi
+
 
 HOST=$1
 
-if [ "$#" -eq 1 ]; then
-    # Missing Port Logic: Determine if HOST is IP or Domain
-    
-    IS_IP=0
-    # Check for IPv4
-    if [[ "$HOST" =~ $IPV4_REGEX ]]; then
-        IS_IP=1
-    # Check for IPv6 (contains colons)
-    elif [[ "$HOST" == *":"* ]]; then
-        IS_IP=1
-    fi
+# 1. Non-allowed Character Filter
+if [[ "$HOST" =~ [^A-Za-z0-9.:-] ]]; then
+    error_invalid
+fi
 
-    if [ "$IS_IP" -eq 1 ]; then
-        # Host is an IP, use default port 22
+IP_VERSION=-1
+
+# 2. Format Validation using strict RegEx
+if [[ "$HOST" =~ $IPV4_REGEX ]]; then
+    IP_VERSION=4
+elif [[ "$HOST" =~ $IPV6_REGEX ]]; then
+    IP_VERSION=6
+elif [[ "$HOST" =~ $DOMAIN_REGEX ]]; then
+    IP_VERSION=0
+else
+    # 3. Short Hostname (for inputs not matching the strict RegEx)
+    if [ "$HOST" = "localhost" ]; then
+        IP_VERSION=0
+    else
+        #echo "exit from DOMAIN_REGEX."
+        error_invalid
+    fi
+fi
+
+# 4. Port Assignment Logic
+if [ "$#" -eq 1 ]; then
+    # Missing Port Logic: Default Port Assignment
+    if [ "$IP_VERSION" -eq 4 ] || [ "$IP_VERSION" -eq 6 ]; then
         PORT=22
         echo "Warning: Missing port. Using default port 22 for IP address."
     else
-        # Host is a domain, use default port 443
         PORT=443
         echo "Warning: Missing port. Using default port 443 for domain name."
     fi
     
-elif [ "$#" -eq 2 ]; then
+elif [ "$#" -eq 2 ]; then 
     # Port is provided, perform validation
     PORT=$2
+    # Port must be pure number and within 65535
     if [[ ! "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
-        exit_error
+        error_invalid
     fi
 fi
 
 # ============================
-# Logic: Resolve IP
+# Logic: Resolve IP (Simplified for valid input only)
 # ============================
 RESOLVED_IP=""
 
 # 1. Check if HOST is already a valid IP address
-if [[ "$HOST" =~ $IPV4_REGEX ]]; then
-    if [ "$FORCE_IPV6" -eq 1 ]; then
-        echo "Error: Host is IPv4, but -6 flag specified."
-        exit 1
+#if [ "$IP_VERSION" -ne -1 ]; then
+if [ "$IP_VERSION" -eq 4 ] || [ "$IP_VERSION" -eq 6 ]; then
+    
+    if [ "$IP_VERSION" -eq 4 ]; then
+        if [ "$FORCE_IPV6" -eq 1 ]; then
+            echo "Error: Host is IPv4, but -6 flag specified."
+            exit 1
+        fi
+        RESOLVED_IP="$HOST"
+        
+    elif [ "$IP_VERSION" -eq 6 ]; then
+        if [ "$FORCE_IPV4" -eq 1 ]; then
+            echo "Error: Host is IPv6, but -4 flag specified."
+            exit 1
+        fi
+        RESOLVED_IP="$HOST"
     fi
-    RESOLVED_IP="$HOST"
-elif [[ "$HOST" == *":"* ]]; then # Simple check for IPv6 format
-    if [ "$FORCE_IPV4" -eq 1 ]; then
-        echo "Error: Host is IPv6, but -4 flag specified."
-        exit 1
-    fi
-    RESOLVED_IP="$HOST"
+
 else
-    # 2. If HOST is a domain, use getent/awk to resolve the IP
+    # 2. Host is a domain (passed all front-end checks), use getent/awk to resolve
     RESOLVE_CMD="getent ahosts $HOST"
     
     if [ "$FORCE_IPV4" -eq 1 ]; then
-        # Try to find IPv4
         RESOLVED_IP=$($RESOLVE_CMD | awk '{ if ($1 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) { print $1; exit } }')
-        if [ -z "$RESOLVED_IP" ]; then
-            echo "Error: Failed to resolve IPv4 address for $HOST."
-            exit 1
-        fi
     elif [ "$FORCE_IPV6" -eq 1 ]; then
-        # Try to find IPv6
         RESOLVED_IP=$($RESOLVE_CMD | awk '{ if ($1 ~ /:/) { print $1; exit } }')
-        if [ -z "$RESOLVED_IP" ]; then
-            echo "Error: Failed to resolve IPv6 address for $HOST."
-            exit 1
-        fi
     else
-        # No forced version, pick the first one (usually v4)
         RESOLVED_IP=$($RESOLVE_CMD | awk '{ print $1; exit }')
-        if [ -z "$RESOLVED_IP" ]; then
-            echo "Error: Failed to resolve address for $HOST."
-            exit 1
-        fi
+    fi
+    
+    # Check for resolution failure (applies to domains and 'localhost')
+    if [ -z "$RESOLVED_IP" ]; then
+        echo "Error: Failed to resolve address for $HOST."
+        exit 1
     fi
 fi
 
@@ -184,20 +244,18 @@ DISPLAY_IP="$RESOLVED_IP"
 # Check if the resolved IP is IPv6
 if [[ "$RESOLVED_IP" == *":"* ]]; then
     DISPLAY_IP="[$RESOLVED_IP]"
-    # Additionally, ensure we use the correct protocol for connection if forced
+    # Ensure correct protocol is used
     if [ "$FORCE_IPV4" -eq 1 ]; then
         echo "Error: Resolved IPv6 address ($RESOLVED_IP), but -4 flag specified."
         exit 1
     fi
 elif [ "$FORCE_IPV6" -eq 1 ]; then
-    # Additionally, ensure we use the correct protocol for connection if forced
+    # Ensure correct protocol is used
     if [[ "$RESOLVED_IP" =~ $IPV4_REGEX ]]; then
         echo "Error: Resolved IPv4 address ($RESOLVED_IP), but -6 flag specified."
         exit 1
     fi
 fi
-
-
 # ============================
 # Logic: Statistics Variables
 # ============================
