@@ -165,7 +165,7 @@ if [[ "$HOST" == *"."* ]]; then
 		IS_IP=1
 	fi
 elif [[ "$HOST" = "localhost" ]]; then
-    IS_IP=1
+    IS_IP=0
 elif [[ "$HOST" == *":"* ]]; then
     IS_IP=1
 else
@@ -293,7 +293,7 @@ while true; do
         RTT_INT=$(printf "%.0f" "$RTT_MS")
 
         # Use DISPLAY_IP (with brackets for IPv6) here
-        echo "Reply from $DISPLAY_IP:$PORT time=${RTT_INT}ms"
+        echo "Probing $DISPLAY_IP:$PORT  time=${RTT_INT}ms"
 
         # Update Stats
         ((SUCCESS++))
@@ -311,7 +311,7 @@ while true; do
     else
         # Connection Failed
         ((FAILED++))
-        echo "From $DISPLAY_IP:$PORT: Connection timed out"
+        echo "Probing $DISPLAY_IP:$PORT  No response"
         sleep 1
     fi
 done
