@@ -56,6 +56,7 @@ FORCE_IPV6=0
 COUNT=-1
 HOST=""
 PORT=""
+INPUT_TYPE=""
 
 # Error Handling / Usage
 usage() {
