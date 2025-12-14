@@ -166,7 +166,7 @@ if [[ "$HOST" == *"."* ]]; then
 	else
 		INPUT_TYPE=1
 	fi
-elif [[ "$HOST" = "localhost" || "$HOST" = "server" ]]; then
+elif [[ "$HOST" = "localhost" ]]; then
     INPUT_TYPE=2
 elif [[ "$HOST" == *":"* ]]; then
     INPUT_TYPE=1
