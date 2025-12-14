@@ -32,7 +32,7 @@ done
 
 if [ ${#missing_tools[@]} -gt 0 ]; then
     echo "Missing required dependencies: ${missing_tools[*]}"
-    echo "Please check it first"
+    echo "Please install it first"
     exit 1
 fi
 
@@ -155,19 +155,20 @@ if [[ "$HOST" =~ [^A-Za-z0-9.:-] ]]; then
     error_invalid
 fi
 
-IS_IP=-1 
-
+INPUT_TYPE=-1 
+# 0=domian, 1=IP, 2=localhost
+	
 # 2. Check input format
 if [[ "$HOST" == *"."* ]]; then
 	if [[ "$HOST" == *[a-zA-Z]* ]]; then
-		IS_IP=0
+		INPUT_TYPE=0
 	else
-		IS_IP=1
+		INPUT_TYPE=1
 	fi
-elif [[ "$HOST" = "localhost" ]]; then
-    IS_IP=0
+elif [[ "$HOST" = "localhost" ]||[ "$HOST" = "server" ]]; then
+    INPUT_TYPE=2
 elif [[ "$HOST" == *":"* ]]; then
-    IS_IP=1
+    INPUT_TYPE=1
 else
     error_invalid
 fi
@@ -207,12 +208,13 @@ fi
 
 # 3. Assignment a default port if it missing
 if [ "$#" -eq 1 ]; then
-	if [ "$IS_IP" -ne 0 ] ; then
-        PORT=22
-        echo "Warning: Missing port. Using default port 22 for IP address."
-    else
+	if [ "$INPUT_TYPE" -eq 0 ] ; then
         PORT=443
         echo "Warning: Missing port. Using default port 443 for domain name."
+    else
+		PORT=22
+        echo "Warning: Missing port. Using default port 22 for IP address."
+		
     fi
 fi
 
@@ -262,7 +264,7 @@ trap print_stats EXIT
 # ============================
 # Logic: Header
 # ============================
-if [ "$IS_IP" -eq 0 ] ; then
+if [ "$INPUT_TYPE" -ne 1 ] ; then
 	echo "Tcping $HOST ($RESOLVED_IP) port $PORT"
 else
 	echo "Tcping $HOST port $PORT"
